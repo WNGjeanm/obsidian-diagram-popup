@@ -32,14 +32,20 @@ export function captureDiagram(container: HTMLElement): DiagramSnapshot {
         for (const property of ['width', 'height', 'max-width', 'max-height', 'min-width', 'min-height', 'transform', 'position']) {
             node.style.removeProperty(property);
         }
+        // A note's constrained wrappers must not clip or shrink the preview.
+        // Only touch the sizing chain; sizes inside SVG labels stay intact.
+        node.style.setProperty('width', `${width}px`, 'important');
+        node.style.setProperty('height', `${height}px`, 'important');
+        node.style.setProperty('max-width', 'none', 'important');
+        node.style.setProperty('max-height', 'none', 'important');
+        node.style.setProperty('flex', 'none', 'important');
+        if (node !== clonedGraphic) {
+            node.style.setProperty('overflow', 'visible', 'important');
+            node.style.setProperty('clip-path', 'none', 'important');
+            node.style.setProperty('contain', 'none', 'important');
+        }
         if (node === element) break;
         node = node.parentElement!;
-    }
-    if (clonedGraphic) {
-        clonedGraphic.style.setProperty('width', `${width}px`);
-        clonedGraphic.style.setProperty('height', `${height}px`);
-        clonedGraphic.style.setProperty('max-width', 'none');
-        clonedGraphic.style.setProperty('max-height', 'none');
     }
     return { element, width, height };
 }
@@ -95,6 +101,7 @@ export class DiagramView extends ItemView {
 
         this.registerDomEvent(this.stage, 'wheel', event => {
             event.preventDefault();
+            event.stopPropagation();
             const rect = this.stage.getBoundingClientRect();
             this.zoom(event.deltaY < 0 ? 1 + this.zoomStep() : 1 / (1 + this.zoomStep()), event.clientX - rect.left, event.clientY - rect.top);
         }, { passive: false });
@@ -159,10 +166,16 @@ export class DiagramView extends ItemView {
 
     private zoom(factor: number, cx = this.stage.clientWidth / 2, cy = this.stage.clientHeight / 2): void {
         this.fitted = false;
-        const next = Math.max(0.02, Math.min(20, this.scale * factor));
+        // Fit is an explicit action, never a limit on manual zoom. In particular,
+        // small diagrams may already fit at >20x: '+' must still enlarge them.
+        const next = Math.max(0.02, this.scale * factor);
+        if (!Number.isFinite(next)) return;
         const ratio = next / this.scale;
-        this.x = cx - (cx - this.x) * ratio;
-        this.y = cy - (cy - this.y) * ratio;
+        const x = cx - (cx - this.x) * ratio;
+        const y = cy - (cy - this.y) * ratio;
+        if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+        this.x = x;
+        this.y = y;
         this.scale = next;
         this.updateTransform();
     }

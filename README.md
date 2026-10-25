@@ -2,7 +2,15 @@
 
 Fork of [gitcpy/obsidian-diagram-popup](https://github.com/gitcpy/obsidian-diagram-popup), retaining the original MIT license and author attribution.
 
-## 原生独立窗口版 / Native windows (0.3.0)
+## 0.3.1 修复
+
+- 取消独立窗口 2000% 的固定缩放上限；图表可继续放大到超出窗口，通过拖动查看局部。
+- 修复小图已适应窗口至超过 2000% 时，点击放大反而缩小的问题。
+- 清理预览副本的父级尺寸和裁剪限制；保留图中标签布局与正文的尺寸限制。
+- 手动缩放后调整窗口大小不会自动缩回；点击 Fit 才恢复适应窗口。
+- 已增加连续放大、小图高倍率和缩放后窗口调整的回归测试。真实 Obsidian 实机验收仍待完成。
+
+## 原生独立窗口版 / Native windows (0.3.1)
 
 桌面端点击图表上的放大按钮，或 Ctrl/Cmd + 单击图表，默认在 **Obsidian 原生独立窗口**中查看。可以移动到旁边或第二块屏幕，一边看图，一边在主窗口编辑笔记。窗口使用 Obsidian 原生标题栏和工作区视图，不创建遮罩，也不设为置顶。
 

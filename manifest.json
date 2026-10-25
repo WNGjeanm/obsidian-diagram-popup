@@ -1,7 +1,7 @@
 {
     "id": "mermaid-popup",
     "name": "Diagram Popup",
-    "version": "0.3.0",
+    "version": "0.3.1",
     "minAppVersion": "1.6.6",
     "description": "View diagrams in native Obsidian windows or zoomable popups while keeping notes compact",
     "author": "ChenPengyuan",

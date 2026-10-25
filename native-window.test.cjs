@@ -61,6 +61,7 @@ function environment() {
 test('snapshot restores SVG intrinsic dimensions without changing source or Mermaid label geometry', () => {
     const env = environment();
     const root = env.document.body.createDiv();
+    root.style.cssText = 'max-width:300px;height:60px;overflow:hidden;clip-path:inset(0)';
     root.innerHTML = '<button class="mermaid-popup-button"></button><div class="mermaid" style="height:60px"><svg viewBox="0 0 1600 900" style="width:100px;height:60px;max-width:100px"><foreignObject width="200" height="60"><div style="width:180px;height:50px">Label</div></foreignObject></svg></div>';
     const before = root.innerHTML;
     const { captureDiagram } = env.load('src/diagram-view.ts');
@@ -68,6 +69,11 @@ test('snapshot restores SVG intrinsic dimensions without changing source or Merm
     assert.equal(result.width, 1600); assert.equal(result.height, 900);
     assert.equal(result.element.querySelector('svg').style.width, '1600px');
     assert.equal(result.element.querySelector('foreignObject div').style.width, '180px');
+    assert.equal(result.element.style.width, '1600px');
+    assert.equal(result.element.style.overflow, 'visible');
+    assert.equal(result.element.style.maxWidth, 'none');
+    assert.equal(result.element.style.clipPath, 'none');
+    assert.equal(result.element.querySelector('svg').style.getPropertyPriority('width'), 'important');
     assert.equal(result.element.querySelector('.mermaid-popup-button'), null);
     assert.equal(root.innerHTML, before);
 });
@@ -93,6 +99,21 @@ test('native view supports fit, independent zoom/pan, resize, close, and lifecyc
     click('Actual size'); assert.match(surface.style.transform, /scale\(1\)/);
     stage.dispatchEvent(new env.dom.window.WheelEvent('wheel', { deltaY: -1, clientX: 50, clientY: 50, cancelable: true }));
     assert.match(surface.style.transform, /scale\(1.2\)/);
+    // Manual zoom must grow beyond both the viewport and the old 20x ceiling.
+    for (let i = 0; i < 30; i++) click('Zoom in');
+    const enlarged = surface.style.transform;
+    const enlargedScale = Number(enlarged.match(/scale\(([^)]+)\)/)[1]);
+    assert.ok(enlargedScale > 20);
+    assert.ok(1600 * enlargedScale > stage.clientWidth);
+    view.onResize(); assert.equal(surface.style.transform, enlarged);
+    click('Move →'); assert.notEqual(surface.style.transform, enlarged);
+    const tiny = env.document.body.createDiv(); tiny.innerHTML = '<svg viewBox="0 0 10 10"></svg>';
+    view.setDiagram(captureDiagram(tiny), 'Tiny.md');
+    const tinyFit = Number(surface.style.transform.match(/scale\(([^)]+)\)/)[1]);
+    assert.ok(tinyFit > 20);
+    click('Zoom in');
+    assert.ok(Number(surface.style.transform.match(/scale\(([^)]+)\)/)[1]) > tinyFit);
+    view.setDiagram(captureDiagram(source), 'Example.md');
     click('Fit diagram to window');
     Object.defineProperty(stage, 'clientWidth', { value: 800 }); view.onResize();
     assert.notEqual(surface.style.transform, initial);

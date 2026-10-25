@@ -1,6 +1,6 @@
 {
     "name": "obsidian-diagram-popup",
-    "version": "0.3.0",
+    "version": "0.3.1",
     "description": "Diagram previews in native Obsidian windows",
     "main": "main.ts",
     "scripts": {

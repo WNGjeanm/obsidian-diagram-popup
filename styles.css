@@ -30,6 +30,10 @@
     left: 0;
     transform-origin: 0 0;
     user-select: none;
+    max-width: none !important;
+    max-height: none !important;
+    overflow: visible;
+    flex: none;
 }
 .diagram-native-surface > * { margin: 0; padding: 0; }
 .diagram-native-surface img { pointer-events: none; }
