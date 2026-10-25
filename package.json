@@ -1,13 +1,15 @@
 {
     "name": "obsidian-diagram-popup",
-    "version": "0.1.0",
-    "description": "Show mermaid diagrams in a draggable and resizable popup",
+    "version": "0.3.0",
+    "description": "Diagram previews in native Obsidian windows",
     "main": "main.ts",
     "scripts": {
         "dev": "npx rollup -c rollup.config.mjs -w --environment PRODUCTION:0",
         "build": "npx rollup -c rollup.config.mjs --environment PRODUCTION:1",
         "lint": "npx eslint src --ext .ts",
-        "rollup": "npx rollup"
+        "rollup": "npx rollup",
+        "typecheck": "tsc --noEmit",
+        "test": "node --test native-window.test.cjs"
     },
     "devDependencies": {
         "@rollup/plugin-commonjs": "^28.0.1",
@@ -16,10 +18,12 @@
         "@rollup/plugin-replace": "^6.0.1",
         "@rollup/plugin-terser": "^0.4.4",
         "@rollup/plugin-typescript": "^12.1.0",
-        "obsidian": "latest",
+        "obsidian": "1.6.6",
         "rollup-plugin-copy": "^3.5.0",
         "rollup-plugin-visualizer": "^5.12.0",
-        "typescript": "^4.3.5"
+        "typescript": "^4.3.5",
+        "jsdom": "^26.1.0",
+        "rollup": "^4.62.2"
     },
     "dependencies": {
         "tslib": "^2.7.0"

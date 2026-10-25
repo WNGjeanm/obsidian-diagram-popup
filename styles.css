@@ -1,4 +1,38 @@
 
+.diagram-native-view {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding: 0 !important;
+}
+.diagram-native-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    padding: 8px;
+    border-bottom: 1px solid var(--background-modifier-border);
+}
+.diagram-native-zoom { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.diagram-native-stage {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    cursor: grab;
+    touch-action: none;
+    background: var(--background-primary);
+}
+.diagram-native-stage.is-dragging { cursor: grabbing; }
+.diagram-native-surface {
+    position: absolute;
+    top: 0;
+    left: 0;
+    transform-origin: 0 0;
+    user-select: none;
+}
+.diagram-native-surface > * { margin: 0; padding: 0; }
+.diagram-native-surface img { pointer-events: none; }
 .popup-overlay {
     position: fixed;
     top: 0;
