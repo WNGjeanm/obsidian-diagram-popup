@@ -1,7 +1,9 @@
-import { Plugin, MarkdownView, setIcon  } from 'obsidian';
+import { Plugin, MarkdownView, setIcon, Platform, Notice, WorkspaceLeaf } from 'obsidian';
 import MermaidPopupSettingTab from './settings';
+import { DiagramView, DIAGRAM_VIEW_TYPE, captureDiagram } from './diagram-view';
 
 interface MermaidPopupSetting {
+    previewMode: 'window' | 'popup';
     kvMap: Record<string, string>;
     kvMapDefault: Record<string, string>;
     kvMapReserved: Record<string, string>;
@@ -29,6 +31,7 @@ interface MermaidPopupSetting {
 };
 
 const DEFAULT_SETTINGS: MermaidPopupSetting = {
+    previewMode: 'window',
     kvMap: {},
     kvMapDefault: {
         'Mermaid':'.mermaid'
@@ -91,7 +94,7 @@ const DEFAULT_SETTINGS: MermaidPopupSetting = {
 };
 
 export default class MermaidPopupPlugin extends Plugin {
-    settings!: MermaidPopupSetting;
+    declare settings: MermaidPopupSetting;
     observer_editting!:MutationObserver | null;
     observer_reading!:MutationObserver | null; 
 
@@ -102,11 +105,13 @@ export default class MermaidPopupPlugin extends Plugin {
     class_openPopupBtnReading_container='mermaid-popup-button-reading-container';
     class_md_containerRead = 'markdown-reading-view';
     class_md_containerEdit = 'markdown-source-view';
+    private markdownObservers = new Map<HTMLElement, MutationObserver>();
     async onload() {
         console.log(`Loading ${this.manifest.name} ${this.manifest.version}`);
 
         // 加载设置
         await this.loadSettings();
+        this.registerView(DIAGRAM_VIEW_TYPE, leaf => new DiagramView(leaf, this));
 
         // 添加设置页面
         this.addSettingTab(new MermaidPopupSettingTab(this.app, this));
@@ -132,32 +137,38 @@ export default class MermaidPopupPlugin extends Plugin {
         // ));
       
         // 监听模式切换事件
-        this.registerEvent(this.app.workspace.on('layout-change', () => {
-            //console.log('layout-change');
-            let view = this.app.workspace.getActiveViewOfType(MarkdownView);
-            if (!view){ // 文档编辑全部关闭
-                this.RelaseWhenfileClose();
+        this.app.workspace.onLayoutReady(() => this.watchMarkdownViews());
+        this.registerEvent(this.app.workspace.on('layout-change', () => this.watchMarkdownViews()));
+
+    }
+
+    private watchMarkdownViews() {
+        const current = new Set<HTMLElement>();
+        this.app.workspace.getLeavesOfType('markdown').forEach(leaf => {
+            const container = leaf.view.containerEl;
+            current.add(container);
+            if (this.markdownObservers.has(container)) return;
+            const scan = () => {
+                // Our own button/style mutations must not trigger an observer loop.
+                observer.disconnect();
+                try {
+                    for (const target of this.GetSettingsClassElementAll(container) ?? []) {
+                        this.addPopupButton(target);
+                    }
+                } finally {
+                    observer.observe(container, { childList: true, subtree: true });
+                }
+            };
+            const observer = new MutationObserver(scan);
+            this.markdownObservers.set(container, observer);
+            scan();
+        });
+        for (const [container, observer] of this.markdownObservers) {
+            if (!current.has(container)) {
+                observer.disconnect();
+                this.markdownObservers.delete(container);
             }
-            if (view) {
-                // 类型断言为 MarkdownView，以便访问 contentEl
-                let container = view.containerEl;
-                let targetArr = this.GetSettingsClassElementAll(container) as Array<[HTMLElement, string]>;
-                
-                //console.log('layout-change targetArr.length', targetArr.length);
-                if (targetArr == null || targetArr.length == 0)
-                {
-                    //console.log('layout-change break', targetArr.length);
-                    this.RelaseWhenfileClose();
-                }
-
-                for(var i=0;i<targetArr.length;i++)
-                {
-                    this.addPopupButton(targetArr[i]);
-                }
-
-                this.ObserveToAddPopupButton(container);
-             }
-        }));
+        }
     }
 
     RelaseWhenfileClose()
@@ -169,6 +180,13 @@ export default class MermaidPopupPlugin extends Plugin {
     }
 
     onunload() {
+        this.RelaseWhenfileClose();
+        for (const [container, observer] of this.markdownObservers) {
+            observer.disconnect();
+            container.querySelectorAll('.mermaid-popup-button, .mermaid-popup-button-reading').forEach(button => button.remove());
+        }
+        this.markdownObservers.clear();
+        this.app.workspace.detachLeavesOfType(DIAGRAM_VIEW_TYPE);
         console.log(`Unloading ${this.manifest.name} ${this.manifest.version}`);
     }
 
@@ -342,13 +360,7 @@ export default class MermaidPopupPlugin extends Plugin {
         let target = target_and_flagContainer[0];
 
         // 切换模式时，如判断原模式的目标，则退出当前方法        
-        if(this.isPreviewMode() && this.isParentEditting(target))
-            return;
-
-        if(!this.isPreviewMode() && this.isParentReading(target))
-            return;
-
-        let {popupButtonClass} = this.getOpenBtnInMd_Mark();
+        let {popupButtonClass} = this.getOpenBtnInMd_Mark_ByParam(this.isParentReading(target));
 
         let popupButton;   
         let flagContainer = target_and_flagContainer[1] == 'true';
@@ -367,8 +379,8 @@ export default class MermaidPopupPlugin extends Plugin {
 
     create_open_button(target_and_flagContainer: [HTMLElement, string], isDebug:boolean=false){
 
-        let {popupButtonClass} = this.getOpenBtnInMd_Mark();
         let target = target_and_flagContainer[0];
+        let {popupButtonClass} = this.getOpenBtnInMd_Mark_ByParam(this.isParentReading(target));
         let flagContainer = target_and_flagContainer[1] == 'true';
         let targetContainer = flagContainer? target:target.parentElement as HTMLElement;
 
@@ -377,14 +389,17 @@ export default class MermaidPopupPlugin extends Plugin {
         popupButton.classList.add(popupButtonClass);
         popupButton.textContent = 'Open Popup';
         setIcon(popupButton, 'maximize');
-        popupButton.title = 'Open Popup';
+        popupButton.title = 'Open diagram preview';
+        popupButton.setAttribute('role', 'button');
+        popupButton.setAttribute('aria-label', 'Open diagram preview');
+        popupButton.tabIndex = 0;
 
         // 插入位置
         targetContainer.insertAdjacentElement('afterbegin', popupButton);
 
         this.adjustDiagramWidthAndHeight_ToContainer(targetContainer);
 
-        if(this.isPreviewMode())
+        if(this.isParentReading(target))
             targetContainer.setCssStyles({position:'relative'});
 
         if (flagContainer)
@@ -398,12 +413,17 @@ export default class MermaidPopupPlugin extends Plugin {
         this.setPopupBtnPos(popupButton);
 
         // bind click to popup
-        this.registerDomEvent(target, 'click', this.handleMermaidClick);
+        this.registerDomEvent(target, 'click', (evt) => {
+            if (!evt.ctrlKey && !evt.metaKey) return;
+            evt.preventDefault();
+            evt.stopPropagation();
+            void this.openPopup(targetContainer);
+        });
 
         let isDragging = false;
 
         // Add click event listener for the button to open the popup
-        popupButton.addEventListener('click', (evt) => {
+        this.registerDomEvent(popupButton, 'click', (evt) => {
             // Only trigger popup if no dragging occurred
             if (!isDragging) {
                 evt.stopPropagation(); // Prevent triggering any other click events
@@ -411,6 +431,13 @@ export default class MermaidPopupPlugin extends Plugin {
             }
             // Reset the dragging flag after click
             isDragging = false;
+        });
+        this.registerDomEvent(popupButton, 'keydown', (evt) => {
+            if (evt.key === 'Enter' || evt.key === ' ') {
+                evt.preventDefault();
+                evt.stopPropagation();
+                void this.openPopup(targetContainer);
+            }
         });
 
         popupButton.setCssStyles({display:'none'});
@@ -433,11 +460,11 @@ export default class MermaidPopupPlugin extends Plugin {
     }
 
     makePopupButtonDisplay_WhenHoverOnContainer(button:HTMLElement, container:HTMLElement){
-        container.addEventListener('mouseenter', () => {
+        this.registerDomEvent(container, 'mouseenter', () => {
             button.setCssStyles({display:'block'});
         });
         
-        container.addEventListener('mouseleave', () => {
+        this.registerDomEvent(container, 'mouseleave', () => {
             button.setCssStyles({display:'none'});
         });
     }
@@ -539,8 +566,7 @@ export default class MermaidPopupPlugin extends Plugin {
      * @return {Element | null} - 返回 容器下的目标元素 ）
      */
     getCoreElement(container: HTMLElement){
-        let {popupButtonClass} = this.getOpenBtnInMd_Mark()
-        let diagramSvg = container.querySelector('.' + popupButtonClass);
+        let diagramSvg = container.querySelector('.mermaid-popup-button, .mermaid-popup-button-reading');
         if(diagramSvg)
             return diagramSvg.nextElementSibling;
         return null;
@@ -634,7 +660,29 @@ export default class MermaidPopupPlugin extends Plugin {
             this.openPopup(closestElement);
     };
 
-    openPopup(containerElement: HTMLElement) {
+    async openPopup(containerElement: HTMLElement) {
+        if (this.settings.previewMode === 'popup' || !Platform.isDesktopApp) {
+            this.openLegacyPopup(containerElement);
+            return;
+        }
+        let leaf: WorkspaceLeaf | undefined;
+        try {
+            const sourceLeaf = this.app.workspace.getLeavesOfType('markdown')
+                .find(item => item.view.containerEl.contains(containerElement));
+            const sourcePath = sourceLeaf?.view instanceof MarkdownView ? sourceLeaf.view.file?.path ?? '' : '';
+            const snapshot = captureDiagram(containerElement);
+            leaf = this.app.workspace.openPopoutLeaf({ size: { width: 1000, height: 750 } });
+            await leaf.setViewState({ type: DIAGRAM_VIEW_TYPE, active: true });
+            if (!(leaf.view instanceof DiagramView)) throw new Error('Diagram view could not be opened');
+            leaf.view.setDiagram(snapshot, sourcePath);
+        } catch (error) {
+            leaf?.detach();
+            console.error('Diagram Popup: could not open native window', error);
+            new Notice('Could not open diagram window. You can select Popup in Diagram Popup settings.');
+        }
+    }
+
+    openLegacyPopup(containerElement: HTMLElement) {
         // targetElement.requestFullscreen();
         // return;
 

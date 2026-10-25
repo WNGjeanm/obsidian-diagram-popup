@@ -12,6 +12,17 @@ class MermaidPopupSettingTab extends PluginSettingTab {
     display(): void {
         const { containerEl } = this;
         containerEl.empty();
+        new Setting(containerEl)
+            .setName('Preview mode')
+            .setDesc('Desktop: open diagrams in an independent Obsidian window so you can keep editing. Mobile always uses Popup. Native windows start fitted to the window; popup size and background settings below apply only to Popup mode.')
+            .addDropdown(dropdown => dropdown
+                .addOption('window', 'Native Obsidian window (desktop)')
+                .addOption('popup', 'Popup overlay (legacy)')
+                .setValue(this.plugin.settings.previewMode)
+                .onChange(async value => {
+                    this.plugin.settings.previewMode = value === 'popup' ? 'popup' : 'window';
+                    await this.plugin.saveSettings();
+                }));
 
         const tableContainer = containerEl.createDiv({ cls: 'setting-table' });
         const table = tableContainer.createEl('table');
