@@ -1,8 +1,10 @@
 import { Plugin, MarkdownView, setIcon, Platform, Notice, WorkspaceLeaf } from 'obsidian';
 import MermaidPopupSettingTab from './settings';
 import { DiagramView, DIAGRAM_VIEW_TYPE, captureDiagram } from './diagram-view';
+import { Language, translate } from './i18n';
 
 interface MermaidPopupSetting {
+    language: Language;
     previewMode: 'window' | 'popup';
     kvMap: Record<string, string>;
     kvMapDefault: Record<string, string>;
@@ -31,6 +33,7 @@ interface MermaidPopupSetting {
 };
 
 const DEFAULT_SETTINGS: MermaidPopupSetting = {
+    language: 'zh-CN',
     previewMode: 'window',
     kvMap: {},
     kvMapDefault: {
@@ -192,6 +195,20 @@ export default class MermaidPopupPlugin extends Plugin {
 
     async loadSettings() {
         this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+        this.settings.language = this.settings.language === 'en' ? 'en' : 'zh-CN';
+    }
+
+    refreshPreviewButtonLabels() {
+        for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
+            leaf.view.containerEl.querySelectorAll<HTMLElement>('.mermaid-popup-button, .mermaid-popup-button-reading')
+                .forEach(button => this.labelPreviewButton(button));
+        }
+    }
+
+    private labelPreviewButton(button: HTMLElement) {
+        const label = translate(this.settings.language, 'openPreview');
+        button.title = label;
+        button.setAttribute('aria-label', label);
     }
 
     async saveSettings() {
@@ -387,11 +404,9 @@ export default class MermaidPopupPlugin extends Plugin {
         // Create the popup button
         let popupButton = targetContainer.doc.createElement('div');
         popupButton.classList.add(popupButtonClass);
-        popupButton.textContent = 'Open Popup';
         setIcon(popupButton, 'maximize');
-        popupButton.title = 'Open diagram preview';
+        this.labelPreviewButton(popupButton);
         popupButton.setAttribute('role', 'button');
-        popupButton.setAttribute('aria-label', 'Open diagram preview');
         popupButton.tabIndex = 0;
 
         // 插入位置
@@ -678,7 +693,7 @@ export default class MermaidPopupPlugin extends Plugin {
         } catch (error) {
             leaf?.detach();
             console.error('Diagram Popup: could not open native window', error);
-            new Notice('Could not open diagram window. You can select Popup in Diagram Popup settings.');
+            new Notice(translate(this.settings.language, 'openFailed'));
         }
     }
 
@@ -894,6 +909,14 @@ export default class MermaidPopupPlugin extends Plugin {
         const closeButton = _doc.doc.createElement('button');
         closeButton.classList.add('control-button', 'close-popup');
         closeButton.textContent = 'X';
+        for (const [button, key] of [
+            [zoomInButton, 'zoomIn'], [zoomOutButton, 'zoomOut'], [upButton, 'moveUp'],
+            [downButton, 'moveDown'], [leftButton, 'moveLeft'], [rightButton, 'moveRight'], [closeButton, 'closePreview'],
+        ] as const) {
+            const label = translate(this.settings.language, key);
+            button.title = label;
+            button.setAttribute('aria-label', label);
+        }
 
         // Append buttons to the button container
         buttonContainer.appendChild(zoomInButton);

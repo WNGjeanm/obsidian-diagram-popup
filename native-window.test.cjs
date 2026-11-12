@@ -14,6 +14,8 @@ function environment() {
     Element.prototype.addClass = function (...names) { this.classList.add(...names); };
     Element.prototype.removeClass = function (...names) { this.classList.remove(...names); };
     Element.prototype.empty = function () { this.replaceChildren(); };
+    Element.prototype.setText = function (value) { this.textContent = value; };
+    Element.prototype.setAttr = function (key, value) { this.setAttribute(key, value); };
     Element.prototype.createEl = function (tag, options = {}) {
         const el = document.createElement(tag);
         if (options.text) el.textContent = options.text;
@@ -38,7 +40,31 @@ function environment() {
         constructor(leaf) { super(); this.leaf = leaf; this.app = leaf.app; this.contentEl = document.body.createDiv(); }
     }
     const notices = [];
-    const api = { ItemView, Plugin: Component, MarkdownView: class {}, PluginSettingTab: class {},
+    class Setting {
+        constructor(parent) { this.row = parent.createDiv({ cls: 'setting-item' }); }
+        setName(text) { this.row.createEl('span', { text }); return this; }
+        setDesc(text) { this.row.createEl('p', { text }); return this; }
+        addDropdown(configure) {
+            const select = this.row.createEl('select');
+            const dropdown = {
+                addOption(value, text) { select.createEl('option', { text, attr: { value } }); return this; },
+                setValue(value) { select.value = value; return this; },
+                onChange(handler) { select.addEventListener('change', () => handler(select.value)); return this; },
+            };
+            configure(dropdown);
+            return this;
+        }
+        addToggle(configure) {
+            configure({ setValue() { return this; }, onChange() { return this; } });
+            return this;
+        }
+        addExtraButton(configure) {
+            configure({ extraSettingsEl: this.row, setIcon() {}, setTooltip() {}, onClick() {} });
+            return this;
+        }
+    }
+    const api = { ItemView, Plugin: Component, MarkdownView: class {}, Setting,
+        PluginSettingTab: class { constructor() { this.containerEl = document.body.createDiv(); } },
         Platform: { isDesktopApp: true }, Notice: class { constructor(msg) { notices.push(msg); } }, setIcon() {} };
     const cache = {};
     function load(file) {
@@ -62,7 +88,7 @@ test('snapshot restores SVG intrinsic dimensions without changing source or Merm
     const env = environment();
     const root = env.document.body.createDiv();
     root.style.cssText = 'max-width:300px;height:60px;overflow:hidden;clip-path:inset(0)';
-    root.innerHTML = '<button class="mermaid-popup-button"></button><div class="mermaid" style="height:60px"><svg viewBox="0 0 1600 900" style="width:100px;height:60px;max-width:100px"><foreignObject width="200" height="60"><div style="width:180px;height:50px">Label</div></foreignObject></svg></div>';
+    root.innerHTML = '<div class="mermaid-popup-button" role="button"><svg viewBox="0 0 24 24"></svg></div><div class="mermaid" style="height:60px"><div class="renderer-zoom"><button><svg viewBox="0 0 24 24"></svg></button><button>−</button></div><svg viewBox="0 0 1600 900" style="width:100px;height:60px;max-width:100px"><foreignObject width="200" height="60"><div style="width:180px;height:50px">Label</div></foreignObject></svg><div class="custom-controls">+</div></div>';
     const before = root.innerHTML;
     const { captureDiagram } = env.load('src/diagram-view.ts');
     const result = captureDiagram(root);
@@ -75,6 +101,8 @@ test('snapshot restores SVG intrinsic dimensions without changing source or Merm
     assert.equal(result.element.style.clipPath, 'none');
     assert.equal(result.element.querySelector('svg').style.getPropertyPriority('width'), 'important');
     assert.equal(result.element.querySelector('.mermaid-popup-button'), null);
+    assert.equal(result.element.querySelector('.renderer-zoom, .custom-controls, button'), null);
+    assert.equal(result.element.querySelectorAll('svg').length, 1);
     assert.equal(root.innerHTML, before);
 });
 
@@ -82,7 +110,7 @@ test('native view supports fit, independent zoom/pan, resize, close, and lifecyc
     const env = environment();
     const { DiagramView, captureDiagram } = env.load('src/diagram-view.ts');
     let closed = 0;
-    const view = new DiagramView({ detach() { closed++; } }, { settings: { ZoomRatioValue: '0.2', MoveStepValue: '30' } });
+    const view = new DiagramView({ detach() { closed++; } }, { settings: { language: 'en', ZoomRatioValue: '0.2', MoveStepValue: '30' } });
     await view.onOpen();
     const stage = view.contentEl.querySelector('.diagram-native-stage');
     Object.defineProperty(stage, 'clientWidth', { value: 1000, configurable: true });
@@ -120,6 +148,41 @@ test('native view supports fit, independent zoom/pan, resize, close, and lifecyc
     assert.equal(env.document.querySelector('.popup-overlay'), null);
     click('Close diagram preview'); assert.equal(closed, 1);
     view.dispose(); click('Close diagram preview'); assert.equal(closed, 1);
+});
+
+test('existing settings default to Chinese, and English survives saving and reopening', async () => {
+    const env = environment();
+    const Plugin = env.load('src/main.ts').default;
+    const { DiagramView } = env.load('src/diagram-view.ts');
+    const SettingsTab = env.load('src/settings.ts').default;
+    const plugin = new Plugin();
+    plugin.app = { workspace: { getLeavesOfType: () => [] } };
+    let data = { DiagramHeightVal: '350' };
+    plugin.loadData = async () => data;
+    plugin.saveData = async saved => { data = { ...saved }; };
+    await plugin.loadSettings();
+    assert.equal(plugin.settings.language, 'zh-CN');
+    assert.equal(plugin.settings.DiagramHeightVal, '350');
+    const chinese = new DiagramView({}, plugin);
+    await chinese.onOpen();
+    assert.equal(chinese.getDisplayText(), '图表预览');
+    assert.equal(chinese.contentEl.querySelector('[aria-label="放大"]').textContent, '+');
+    assert.match(chinese.contentEl.querySelector('.diagram-native-toolbar').textContent, /适应窗口/);
+    const settings = new SettingsTab(plugin.app, plugin);
+    settings.display();
+    const languages = settings.containerEl.querySelector('select');
+    assert.equal(languages.value, 'zh-CN');
+    assert.match(settings.containerEl.textContent, /插件语言/);
+    languages.value = 'en';
+    languages.dispatchEvent(new env.dom.window.Event('change'));
+    await new Promise(resolve => setImmediate(resolve));
+    assert.match(settings.containerEl.textContent, /Plugin language/);
+    await plugin.loadSettings();
+    const english = new DiagramView({}, plugin);
+    await english.onOpen();
+    assert.equal(english.getDisplayText(), 'Diagram preview');
+    assert.equal(english.contentEl.querySelector('[aria-label="Zoom in"]').textContent, '+');
+    assert.equal(plugin.settings.DiagramHeightVal, '350');
 });
 
 test('desktop uses native workspace API, mobile/legacy use overlay, failed opens close the new leaf', async () => {

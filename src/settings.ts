@@ -1,5 +1,6 @@
-import { App, Plugin, PluginSettingTab, Setting, TFile, Notice, Modal } from 'obsidian';
-import MermaidPopupPlugin from './main'
+import { App, PluginSettingTab, Setting, Notice, Modal } from 'obsidian';
+import type MermaidPopupPlugin from './main';
+import { MessageKey, translate } from './i18n';
 
 class MermaidPopupSettingTab extends PluginSettingTab {
     plugin: MermaidPopupPlugin;
@@ -9,15 +10,32 @@ class MermaidPopupSettingTab extends PluginSettingTab {
         this.plugin = plugin;
     }
 
+    private t(key: MessageKey): string {
+        return translate(this.plugin.settings.language, key);
+    }
+
     display(): void {
         const { containerEl } = this;
         containerEl.empty();
         new Setting(containerEl)
-            .setName('Preview mode')
-            .setDesc('Desktop: open diagrams in an independent Obsidian window so you can keep editing. Mobile always uses Popup. Native windows start fitted to the window; popup size and background settings below apply only to Popup mode.')
+            .setName(this.t('language'))
+            .setDesc(this.t('languageDesc'))
             .addDropdown(dropdown => dropdown
-                .addOption('window', 'Native Obsidian window (desktop)')
-                .addOption('popup', 'Popup overlay (legacy)')
+                .addOption('zh-CN', '简体中文')
+                .addOption('en', 'English')
+                .setValue(this.plugin.settings.language)
+                .onChange(async value => {
+                    this.plugin.settings.language = value === 'en' ? 'en' : 'zh-CN';
+                    await this.plugin.saveSettings();
+                    this.plugin.refreshPreviewButtonLabels();
+                    this.display();
+                }));
+        new Setting(containerEl)
+            .setName(this.t('previewMode'))
+            .setDesc(this.t('previewModeDesc'))
+            .addDropdown(dropdown => dropdown
+                .addOption('window', this.t('nativeWindow'))
+                .addOption('popup', this.t('legacyPopup'))
                 .setValue(this.plugin.settings.previewMode)
                 .onChange(async value => {
                     this.plugin.settings.previewMode = value === 'popup' ? 'popup' : 'window';
@@ -31,13 +49,13 @@ class MermaidPopupSettingTab extends PluginSettingTab {
         const row_02_popup_sz_and_dg_h_val = tbody.createEl('tr');
 
         const td_01_1_popup_sz_title = row_01_popup_sz_and_dg_h_title.createEl('td');
-        let popup_sz_title = td_01_1_popup_sz_title.createEl('h2', { text: 'Popup Size Init' });
+        let popup_sz_title = td_01_1_popup_sz_title.createEl('h2', { text: this.t('popupSize') });
         popup_sz_title.classList.add('config-text');
 
         const td_02_1_popup_sz = row_02_popup_sz_and_dg_h_val.createEl('td');
         // 弹窗初始化
         new Setting(td_02_1_popup_sz)
-        .setName('Choose the Popup Size')
+        .setName(this.t('choosePopupSize'))
         .addDropdown(dropdown => {
             let ddPopupSizeInit = this.plugin.settings.kvMapPopupSizeInit;
             for(const key in ddPopupSizeInit){
@@ -53,7 +71,7 @@ class MermaidPopupSettingTab extends PluginSettingTab {
         });  
 
         let td_01_2_dg_h= row_01_popup_sz_and_dg_h_title.createEl('td');
-        let td_02_1_dg_h_title = td_01_2_dg_h.createEl('h2', { text: 'Original Target Height' });
+        let td_02_1_dg_h_title = td_01_2_dg_h.createEl('h2', { text: this.t('diagramHeight') });
         td_02_1_dg_h_title.classList.add('config-text');          
         
         const td_02_2_dg_h_val = row_02_popup_sz_and_dg_h_val.createEl('td');
@@ -75,7 +93,7 @@ class MermaidPopupSettingTab extends PluginSettingTab {
 
         let dg_h_val_max = td_02_2_dg_h_val.createEl('p');
         dg_h_val_max.setText(dg_h_max);
-        let dg_h_val_cur_title = td_02_2_dg_h_val.createEl('p',  {text:'current:'});
+        let dg_h_val_cur_title = td_02_2_dg_h_val.createEl('p',  {text:this.t('current')});
         dg_h_val_cur_title.classList.add('ori_diagram_height_cur');
         let dg_h_val_cur = td_02_2_dg_h_val.createEl('p');
         dg_h_val_cur.classList.add('ori_diagram_height_val');
@@ -89,25 +107,19 @@ class MermaidPopupSettingTab extends PluginSettingTab {
             this.plugin.saveSettings();
         });
 
-        this.setInfo(td_02_2_dg_h_val, 'Click for tips on Original Target Height Setting.',
-            'Original Target Height Setting',
-            'Under proportional scaling, ' +
-                    'adapt to the width of editor, ' + 
-                    'and then if the height is still greater than the value of \'Original Target Height\',' + 
-                    'it will adapt again. '
-        )          
+        this.setInfo(td_02_2_dg_h_val, this.t('help'), this.t('diagramHeight'), this.t('heightHelp'));
 
         const row_1 = tbody.createEl('tr');
         const row_2 = tbody.createEl('tr');
 
         const td_1_1 = row_1.createEl('td');
         // 缩放设置标题
-        let titleZoomRatio = td_1_1.createEl('h2', { text: 'Zoom Ratio' });
+        let titleZoomRatio = td_1_1.createEl('h2', { text: this.t('zoomRatio') });
         titleZoomRatio.classList.add('config-text');
         const td_2_1 = row_2.createEl('td');
         // 缩放设置
         new Setting(td_2_1)
-        .setName('Choose the ratio for zooming in or out')
+        .setName(this.t('chooseZoomRatio'))
         .addDropdown(dropdown => {
             let ddZoomRatio = this.plugin.settings.kvMapZoomRatio;
             for(const key in ddZoomRatio){
@@ -124,12 +136,12 @@ class MermaidPopupSettingTab extends PluginSettingTab {
 
         const td_1_2 = row_1.createEl('td');
         // 移动步长设置标题
-        let titleMoveStep = td_1_2.createEl('h2', { text: 'Move Step' });
+        let titleMoveStep = td_1_2.createEl('h2', { text: this.t('moveStep') });
         titleMoveStep.classList.add('config-text');
         const td_2_2 = row_2.createEl('td');
         // 移动步长设置
         new Setting(td_2_2)
-        .setName('Choose the step for moving')
+        .setName(this.t('chooseMoveStep'))
         .addDropdown(dropdown => {
             let ddZoomRatio = this.plugin.settings.kvMapMoveStep;
             for(const key in ddZoomRatio){
@@ -148,11 +160,11 @@ class MermaidPopupSettingTab extends PluginSettingTab {
         const row = tbody.createEl('tr');
         const td_title_a = row.createEl('td');
         // bg Alpha title
-        let titlePpBgA = td_title_a.createEl('h2', { text: 'Popup Background Alpha Value' });
+        let titlePpBgA = td_title_a.createEl('h2', { text: this.t('opacity') });
         titlePpBgA.classList.add('config-text');
         // bg Alpha settign
         new Setting(td_title_a)
-        .setName('Choose the alpha value')
+        .setName(this.t('chooseOpacity'))
         .addDropdown(dropdown => {
             let bgAlphaStep = this.plugin.settings.bgAlphaStep;
             for(const key in bgAlphaStep){
@@ -171,11 +183,11 @@ class MermaidPopupSettingTab extends PluginSettingTab {
 
         const td_title_blur = row.createEl('td');
         // bg Alpha title
-        let titleBlur = td_title_blur.createEl('h2', { text: 'Popup Background Blur' });
+        let titleBlur = td_title_blur.createEl('h2', { text: this.t('blur') });
         titleBlur.classList.add('config-text');
         // bg Alpha settign
         new Setting(td_title_blur)
-        .setName('Enable blur')
+        .setName(this.t('enableBlur'))
         .addToggle(toggle => 
             toggle
                 .setValue(this.plugin.settings.bgIsBlur=='1'?true:false)
@@ -188,50 +200,50 @@ class MermaidPopupSettingTab extends PluginSettingTab {
         this.addClass(td_title_blur, 'setting-item', 'setting-item-on-top-line');        
 
         // 开启弹窗按钮位置
-        let title_btn_pos = containerEl.createEl('h2', { text: 'Open Popup Button Relative Position Init' });
+        let title_btn_pos = containerEl.createEl('h2', { text: this.t('buttonPosition') });
         title_btn_pos.classList.add('config-text');
         
         // x 轴相对位置
         const kvRow_open_btn = containerEl.createDiv({ cls: 'kv-row open_btn_pos' });
         this.slideInput(kvRow_open_btn, "x:", this.plugin.settings.open_btn_pos_x,  (val)=>{this.plugin.settings.open_btn_pos_x=val}, '1', '500', 'px');
-        this.setInfo(kvRow_open_btn, 'Click for tips on Open Popup Button Relative Position Init Setting.',
-            'Open Popup Button Relative Position Init Setting',
-            'x represents the pixels to the right edge of the target container.'
+        this.setInfo(kvRow_open_btn, this.t('help'),
+            this.t('buttonPosition'),
+            this.t('rightOffset')
         )    
 
         // y 轴相对位置
         const kvRow_open_btn_y = containerEl.createDiv({ cls: 'kv-row open_btn_pos' });
         this.slideInput(kvRow_open_btn_y, "y:", this.plugin.settings.open_btn_pos_y,  (val)=>{this.plugin.settings.open_btn_pos_y=val}, '1', '500', 'px');
-        this.setInfo(kvRow_open_btn_y, 'Click for tips on Open Popup Button Relative Position Init Setting.',
-            'Open Popup Button Relative Position Init Setting',
-            'y represents the pixels to the top edge of the target container.'
+        this.setInfo(kvRow_open_btn_y, this.t('help'),
+            this.t('buttonPosition'),
+            this.t('topOffset')
         )         
 
         // Add New Target
-        let title = containerEl.createEl('h2', { text: 'Add New Target' });
+        let title = containerEl.createEl('h2', { text: this.t('newTarget') });
         title.classList.add('config-text');
 
         // 添加文本说明
-        containerEl.createEl('p', { text: 'This plugin supports customing target from mermaid, plantuml, graphviz, image and so on. ' });
+        containerEl.createEl('p', { text: this.t('targetDesc') });
 
         // 创建一个 div 来包含输入框和按钮，并使用 Flexbox 布局
         const kvRow = containerEl.createDiv({ cls: 'kv-row' });
 
         // 创建第一个输入框 (Key)
-        const keyInput = kvRow.createEl('input', { type: 'text', placeholder: 'Input Key please' });
+        const keyInput = kvRow.createEl('input', { type: 'text', placeholder: this.t('targetPlaceholder') });
 
         // 创建第二个输入框 (Value)
-        const valueInput = kvRow.createEl('input', { type: 'text', placeholder: 'Input Class Name please' });
-        const classname_fmt = 'classanme format: start with \'A-Za-z\' or \'-\' and then  \'A-Za-z0-9\' or \'-\'';
+        const valueInput = kvRow.createEl('input', { type: 'text', placeholder: this.t('classPlaceholder') });
+        const classname_fmt = this.t('classFormat');
         valueInput.setAttr('title', classname_fmt);
 
         // 是否容器
         const isContainer = kvRow.createEl('input', { type: 'checkbox' });
-        isContainer.setAttr('title', 'Please check it if the classname is the container of the object you want to control');
+        isContainer.setAttr('title', this.t('containerHint'));
         isContainer.addClass("kv-chk");
 
         // 创建保存按钮
-        const saveButton = kvRow.createEl('button', { text: 'save' });
+        const saveButton = kvRow.createEl('button', { text: this.t('save') });
 
         // 添加保存按钮的点击事件
         saveButton.onclick = async () => {
@@ -242,7 +254,7 @@ class MermaidPopupSettingTab extends PluginSettingTab {
                 // 判断 key 是否已存在
                 if(this.plugin.settings.kvMapReserved[key] || this.plugin.settings.kvMap[key] || this.plugin.settings.kvMapDefault[key] )
                 {
-                    new Notice('Target exists');
+                    new Notice(this.t('targetExists'));
                     return;
                 }
 
@@ -256,45 +268,45 @@ class MermaidPopupSettingTab extends PluginSettingTab {
                 await this.plugin.saveSettings();
                 //this.displayKvMap(containerEl);
                 this.display();
-                new Notice(`Saved Target And Class Name: ${key} -> ${value}`);
+                new Notice(`${this.t('savedTarget')}: ${key} → ${value}`);
 
                 // 清空输入框
                 keyInput.value = '';
                 valueInput.value = '';
                 isContainer.value = '';
             } else {
-                new Notice('Input Target and Class Name please');
+                new Notice(this.t('missingTarget'));
             }
         };
 
         // 创建复位按钮
-        const resetButton = kvRow.createEl('button', { text: 'reset' });        
+        const resetButton = kvRow.createEl('button', { text: this.t('reset') });
         // 添加复位按钮的点击事件
         resetButton.onclick = async () => {
             // 弹出确认提示窗口
-            const confirmed = resetButton.win.confirm("Confirm to reset? It could not be restored!");
+            const confirmed = resetButton.win.confirm(this.t('confirmReset'));
             if (confirmed) {
                 // 用户确认，执行删除操作
                 this.plugin.settings.kvMap = {};
                 this.plugin.saveData(this.plugin.settings);
-                new Notice("reset success");
+                new Notice(this.t('resetDone'));
 
                 //this.displayKvMap(containerEl);
                 this.display();
             } else {
                 // 用户取消，不执行任何操作
-                new Notice("reset canceled");
+                new Notice(this.t('resetCanceled'));
             }
         };     
 
         // 显示保存后的键值对
         this.displayKvMap(containerEl);
 
-        let titleConnect = containerEl.createEl('h2', { text: 'How to work in other plugins' });
+        let titleConnect = containerEl.createEl('h2', { text: this.t('integrations') });
         titleConnect.classList.add('config-text-connect');
 
-        containerEl.createEl('p', { text: '\'.diagram-popup\' is a reserved class for other plugins to work with.' })
-        containerEl.createEl('p', { text: 'if you add it to the class list of your target container, it will get the functionality.' });
+        containerEl.createEl('p', { text: this.t('reservedClass') });
+        containerEl.createEl('p', { text: this.t('reservedUse') });
     }
     
     isValidClassname(classname:string) {
@@ -343,7 +355,7 @@ class MermaidPopupSettingTab extends PluginSettingTab {
         let input_val_max = containerEl.createEl('p');
         input_val_max.setText(max + unit);
 
-        let input_val_cur_title = containerEl.createEl('p',  {text:'current:'});
+        let input_val_cur_title = containerEl.createEl('p',  {text:this.t('current')});
         input_val_cur_title.classList.add('open_btn_pos_cur_title');
         let input_val_cur = containerEl.createEl('p');
         input_val_cur.classList.add('open_btn_pos_cur_val');
@@ -385,10 +397,10 @@ class MermaidPopupSettingTab extends PluginSettingTab {
             // 创建标题栏
             const thead = table.createEl('thead');
             const headerRow = thead.createEl('tr');
-            headerRow.createEl('th', { text: 'Target' });
-            headerRow.createEl('th', { text: 'Class Name' });
-            headerRow.createEl('th', { text: 'Is Container' });
-            headerRow.createEl("th", { text: "Actions" }); // 添加 "Actions" 标题列
+            headerRow.createEl('th', { text: this.t('target') });
+            headerRow.createEl('th', { text: this.t('className') });
+            headerRow.createEl('th', { text: this.t('isContainer') });
+            headerRow.createEl("th", { text: this.t('actions') });
 
             // 创建表格主体
             const tbody = table.createEl('tbody');
@@ -398,10 +410,10 @@ class MermaidPopupSettingTab extends PluginSettingTab {
 
 
                 const row = tbody.createEl('tr');
-                row.createEl('td', { text: key });
+                row.createEl('td', { text: key === 'Reserved' && value === this.plugin.settings.kvMapReserved[key] ? this.t('reserved') : key });
                 let arrVal = value.split('|');
                 let val = arrVal[0].replace('.', '');
-                let chk = arrVal[1] == "true" ? 'Y' :'';
+                let chk = arrVal[1] == "true" ? this.t('yes') :'';
                 row.createEl('td', { text: val });
                 row.createEl('td', { text: chk });
                 // 添加删除按钮
@@ -413,7 +425,7 @@ class MermaidPopupSettingTab extends PluginSettingTab {
                 if (Object.values(this.plugin.settings.kvMapReserved).includes(value))
                     return;
 
-                const deleteButton = actionsTd.createEl("button", { text: "del" });                
+                const deleteButton = actionsTd.createEl("button", { text: this.t('remove') });
                 // 绑定删除事件
                 deleteButton.addEventListener("click", () => {
                     delete this.plugin.settings.kvMap[key]; // 删除 KV 对
@@ -423,7 +435,7 @@ class MermaidPopupSettingTab extends PluginSettingTab {
                 });            
             });
         } else {
-            kvDisplay.setText('No Target Setting Saved');
+            kvDisplay.setText(this.t('emptyTargets'));
         }
     }
 }

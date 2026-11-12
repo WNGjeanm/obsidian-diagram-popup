@@ -2,6 +2,11 @@
 
 Fork of [gitcpy/obsidian-diagram-popup](https://github.com/gitcpy/obsidian-diagram-popup), retaining the original MIT license and author attribution.
 
+## 0.3.2 更新
+
+- 新增「插件语言 / Plugin language」，默认简体中文，可切换 English。已打开的预览请关闭后重新打开。
+- 修复原生预览将源图表的加减按钮一起放大的问题。画布只展示图表，顶部工具栏仍可缩放、平移和适应窗口。
+
 ## 0.3.1 修复
 
 - 取消独立窗口 2000% 的固定缩放上限；图表可继续放大到超出窗口，通过拖动查看局部。

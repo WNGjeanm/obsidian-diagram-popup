@@ -1,5 +1,6 @@
 import { ItemView, WorkspaceLeaf } from 'obsidian';
 import type MermaidPopupPlugin from './main';
+import { MessageKey, translate } from './i18n';
 
 export const DIAGRAM_VIEW_TYPE = 'diagram-popup-preview';
 
@@ -9,22 +10,40 @@ export interface DiagramSnapshot {
     height: number;
 }
 
+const CONTROLS = [
+    'button', '[role="button"]', '[role="toolbar"]', '.clickable-icon',
+    '.mermaid-popup-button', '.mermaid-popup-button-reading', '.edit-block-button',
+    '.zoom-controls', '.mermaid-zoom-controls', '.markmap-toolbar', '.mm-toolbar',
+].join(', ');
+
 // Keep the rendered snapshot independent of the editor's DOM and size limits.
 export function captureDiagram(container: HTMLElement): DiagramSnapshot {
-    const graphic = container.matches('svg, img') ? container : container.querySelector('svg, img');
+    const graphic = container.matches('svg, img') ? container
+        : Array.from(container.querySelectorAll('svg, img')).find(node =>
+            !node.closest(CONTROLS) && !node.parentElement?.closest('svg'));
     const bounds = (graphic ?? container).getBoundingClientRect();
     const svgBox = graphic?.getAttribute('viewBox')?.trim().split(/[\s,]+/).map(Number);
     const dimension = (axis: 'width' | 'height', index: number): number => {
         const image = graphic as HTMLImageElement | null;
         const natural = axis === 'width' ? image?.naturalWidth : image?.naturalHeight;
-        const value = natural || svgBox?.[index] || parseFloat(graphic?.getAttribute(axis) ?? '') || bounds[axis];
+        const value = natural || svgBox?.[index] || bounds[axis] || parseFloat(graphic?.getAttribute(axis) ?? '');
         return Number.isFinite(value) && value > 0 ? value : (axis === 'width' ? 800 : 600);
     };
     const width = dimension('width', 2);
     const height = dimension('height', 3);
-    const element = container.cloneNode(true) as HTMLElement;
-    element.querySelectorAll('.mermaid-popup-button, .mermaid-popup-button-reading, .edit-block-button').forEach(el => el.remove());
-    const clonedGraphic = element.matches('svg, img') ? element : element.querySelector<HTMLElement>('svg, img');
+    // Clone the drawing and its ancestor chain, never adjacent source controls.
+    // Keep the complete SVG subtree (defs, markers and foreignObject labels).
+    const clonedGraphic = graphic?.cloneNode(true) as HTMLElement | undefined;
+    let element = clonedGraphic ?? container.cloneNode(true) as HTMLElement;
+    if (graphic) {
+        for (let parent = graphic.parentElement; parent && container.contains(parent); parent = parent.parentElement) {
+            const wrapper = parent.cloneNode(false) as HTMLElement;
+            wrapper.appendChild(element);
+            element = wrapper;
+        }
+    } else {
+        element.querySelectorAll(CONTROLS).forEach(el => el.remove());
+    }
     // Clear only the editor sizing chain. Mermaid label/foreignObject sizes
     // inside the SVG are part of the drawing and must remain intact.
     let node = clonedGraphic ?? element;
@@ -66,24 +85,25 @@ export class DiagramView extends ItemView {
     }
 
     getViewType(): string { return DIAGRAM_VIEW_TYPE; }
-    getDisplayText(): string { return 'Diagram preview'; }
+    private t(key: MessageKey): string { return translate(this.plugin.settings.language, key); }
+    getDisplayText(): string { return this.t('previewTitle'); }
     getIcon(): string { return 'image'; }
 
     async onOpen(): Promise<void> {
         this.contentEl.empty();
         this.contentEl.addClass('diagram-native-view');
         const toolbar = this.contentEl.createDiv({ cls: 'diagram-native-toolbar' });
-        toolbar.setAttribute('aria-label', 'Diagram controls');
+        toolbar.setAttribute('aria-label', this.t('controls'));
         const button = (text: string, title: string, action: () => void) => {
             const el = toolbar.createEl('button', { text, attr: { title, 'aria-label': title } });
             this.registerDomEvent(el, 'click', action);
         };
-        button('+', 'Zoom in', () => this.zoom(1 + this.zoomStep()));
-        button('−', 'Zoom out', () => this.zoom(1 / (1 + this.zoomStep())));
-        button('Fit', 'Fit diagram to window', () => this.fit());
-        button('100%', 'Actual size', () => { this.fitted = false; this.center(1); });
-        for (const [label, dx, dy] of [['←', -1, 0], ['→', 1, 0], ['↑', 0, -1], ['↓', 0, 1]] as const) {
-            button(label, `Move ${label}`, () => {
+        button('+', this.t('zoomIn'), () => this.zoom(1 + this.zoomStep()));
+        button('−', this.t('zoomOut'), () => this.zoom(1 / (1 + this.zoomStep())));
+        button(this.t('fit'), this.t('fitTitle'), () => this.fit());
+        button('100%', this.t('actualSize'), () => { this.fitted = false; this.center(1); });
+        for (const [label, key, dx, dy] of [['←', 'moveLeft', -1, 0], ['→', 'moveRight', 1, 0], ['↑', 'moveUp', 0, -1], ['↓', 'moveDown', 0, 1]] as const) {
+            button(label, this.t(key), () => {
                 this.fitted = false;
                 const step = parseFloat(this.plugin.settings.MoveStepValue) || 30;
                 this.x += dx * step;
@@ -91,13 +111,13 @@ export class DiagramView extends ItemView {
                 this.updateTransform();
             });
         }
-        button('Close', 'Close diagram preview', () => this.leaf.detach());
+        button(this.t('close'), this.t('closePreview'), () => this.leaf.detach());
         this.zoomLabel = toolbar.createEl('span', { cls: 'diagram-native-zoom' });
         this.stage = this.contentEl.createDiv({ cls: 'diagram-native-stage' });
         this.stage.tabIndex = 0;
-        this.stage.setAttribute('aria-label', 'Diagram canvas: drag to pan, scroll to zoom');
+        this.stage.setAttribute('aria-label', this.t('canvas'));
         this.surface = this.stage.createDiv({ cls: 'diagram-native-surface' });
-        this.surface.createEl('p', { text: 'Open a diagram from its source note to load a preview. Previews are snapshots and are not restored after restart.' });
+        this.surface.createEl('p', { text: this.t('emptyPreview') });
 
         this.registerDomEvent(this.stage, 'wheel', event => {
             event.preventDefault();
@@ -137,7 +157,7 @@ export class DiagramView extends ItemView {
     }
 
     setDiagram(snapshot: DiagramSnapshot, sourcePath: string): void {
-        this.stage.title = sourcePath ? `Snapshot of ${sourcePath}. Reopen from the note to refresh.` : 'Diagram snapshot';
+        this.stage.title = sourcePath ? `${this.t('snapshot')}: ${sourcePath}\n${this.t('refreshSnapshot')}` : this.t('snapshot');
         this.width = snapshot.width;
         this.height = snapshot.height;
         this.surface.empty();
